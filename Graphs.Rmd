@@ -1,0 +1,126 @@
+---
+title: "Dodgers"
+author: "John Zelten"
+date: "2022-10-26"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, comment = "", warning = FALSE, message = FALSE)
+```
+
+# Los Angeles Dodgers 2022 Pitching Graphs
+
+In additon to my project I wanted to incorporate some graphs that could be used for our own players performance rather than scouting other teams players. I can use these codes to do the same for opposition pitching, would just need to change the filters. 
+
+```{r}
+
+
+library(ggplot2) # Load ggplot2
+library(ggdark) # Load ggdark
+library(baseballr) # Load baseballr package
+library(tidyr) # For gather function
+library(ggnewscale) # For multiple color scales
+
+
+```
+
+```{r}
+load("~/Portfolio Projects/2022_stat_cast_data.rda")
+```
+
+
+#Pitch type by count
+Using these graphs we can see our pitchers tendencies on what kind of pitches are thrown in certain counts. 
+
+```{r}
+pitchers <- pitchers
+
+count_diff <- rep("equal", nrow(pitchers))
+count_diff[pitchers$balls < pitchers$strikes] <- "ahead"
+count_diff[pitchers$balls > pitchers$strikes] <- "behind"
+pitchers$count_diff <- count_diff
+
+# Extract rows with pitchers from Selected Team
+pitchers_1 <- pitchers[pitchers$pitcher_team == "LAD",]
+players_1 <- unique(na.omit(pitchers_1$player_name))
+pitches <- rep(0, length(players_1))
+for(i in 1:length(players_1)){
+    pitches[i] <- sum(pitchers_1$player_name == players_1[i], na.rm = T)
+}
+temp_1 <- cbind.data.frame(players_1[order(pitches, decreasing = TRUE)],
+                            pitches[order(pitches, decreasing = TRUE)])
+names(temp_1) <- c("players", "pitches")
+
+sel_players <- c(1:5)
+
+for(i in sel_players){
+  player <- temp_1$players[i]
+  t1 <- as.matrix(table(pitchers$pitch_name[pitchers$player_name == player], pitchers$count_diff[pitchers$player_name == player]))
+  p_sums <- rowSums(t1)
+  rownames(t1) <- paste(rownames(t1), ": ", p_sums, sep = "")
+  temp <- colSums(t1)
+  t1 <- as.data.frame(t1)  
+  t1$Freq[t1$Var2 == "ahead"] <- t1$Freq[t1$Var2 == "ahead"]/temp[1]
+  t1$Freq[t1$Var2 == "behind"] <- t1$Freq[t1$Var2 == "behind"]/temp[2]
+  t1$Freq[t1$Var2 == "equal"] <- t1$Freq[t1$Var2 == "equal"]/temp[3]
+  names(t1)[1:2] <- c("pitch", "count")
+  g_1 <- ggplot(t1, 
+              aes(x = count, y = pitch)) +
+  geom_tile(aes(fill = Freq)) + 
+  scale_fill_gradient(low = "blue",  
+                       high = "red") +
+  labs(x = "Count Status", 
+       y = "Pitch",
+       fill = "Proportion by\nCount Status",
+       title = paste(player, "- Pitches:", temp_1$pitches[i], sep = ""),
+       subtitle = "Pitch Selection\nby Count")
+
+ print(g_1)
+  
+}
+```
+
+# Ball movement
+
+These graphs will show the flight path of the ball from the pitchers hand to when it crosses the plate.
+
+```{r}
+
+sel_players <- c(1:5)
+
+for(i in sel_players){ 
+   player <- temp_1$players[i]
+    player_data <- pitchers[pitchers$player_name == player,]
+g_1 <- ggplot(player_data[player_data$description %in% c("called_strike", "hit_into_play",
+                                                         "hit_into_play_no_out", "hit_into_play_score",
+                                                         "swinging_strike"),], 
+              aes(x = release_pos_x, 
+                  xend = plate_x, 
+                  y = release_pos_z,
+                  yend = plate_z, 
+                  color = pitch_name)) + 
+
+  geom_segment(alpha = 0.3,
+               arrow = arrow(length = unit(0.25, "cm"), 
+                                         type = "closed")) +
+  dark_theme_bw() + 
+  geom_vline(xintercept = -0.7083333, linetype = 2) + 
+  geom_vline(xintercept = 0.7083333, linetype = 2) + 
+  #scale_color_gradient(low = "blue", high= "red") +
+  geom_point(inherit.aes = FALSE, aes(x = release_pos_x, 
+                                      y= release_pos_z, 
+                                      color = pitch_name), 
+             alpha = 0.5)  +
+  labs(x = "X", y = "Z",  
+       title = paste(player),
+       subtitle = "Pitch Movement by Pitch Type 2022")
+print(g_1)
+
+}
+
+
+```
+
+
+

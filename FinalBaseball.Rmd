@@ -1,0 +1,250 @@
+---
+title: "Baseball Project"
+author: "John Zelten"
+date: "2022-10-25"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+
+library(tidyverse)
+library(rvest)
+library(data.table)
+
+```
+
+# Welcome to John Zelten's Project
+The goal of this project is to take players' stats' from 2021 and see who could be good additions to a team to help win a World Series in 2022. First I used the Lahman Data set and did some filtering to get a significant sample size of games and at bats from players. 
+
+```{r}
+library(readr)
+Batting <- read_csv("Batting.csv")
+View(Batting)
+
+library(readr)
+Salaries <- read_csv("Salaries.csv")
+View(Salaries)
+
+library(readr)
+Fielding <- read_csv("Fielding.csv")
+View(Fielding)
+
+library(readr)
+
+Batting <- as.data.table(Batting)
+
+Batting <- Batting[yearID == 2021]
+
+Batting <- Batting[Batting$AB > 50]
+
+Batting <- Batting[Batting$G > 30]
+
+
+```
+
+I believe a important metric for a hitter is how many total bases they hit for in a season, so I created a new column for Total Bases that a player hit for in this season. 
+
+```{r}
+Batting[, single := Batting$H - Batting$`2B` - Batting$`3B` ]
+
+Batting[, TotalBases := single + (Batting$`2B` * 2) + (Batting$`3B` * 3) + (Batting$HR * 4)]
+
+
+```
+
+Using the new Total Bases Column I then created another metric for expected bases per at bat. This tells me how effective a player was in their at bats. As an arbitrary number I also filtered to only have players who had a Expected Base per AB above .6 and created a new value I named High Bases. 
+
+```{r}
+Batting[, xBA := Batting$TotalBases/Batting$AB]
+
+# With that let's break down and see all the players who are expected to get .6 Bases an at bat
+
+HighBases <- Batting[xBA > .6]
+
+rmarkdown::paged_table(HighBases)
+
+```
+
+Here I ran into a problem, the only players that I saw in HighBases were players that I considered at a Superstar level, which is not the kind of player we are trying to identify, so I changed the parameters a bit. I found the mean expected bases and decided to look at the players who were above the mean of .43, thus creating GoodxBA. 
+
+```{r}
+mean(Batting$xBA)
+
+GoodxBA <- Batting[Batting$xBA > mean(Batting$xBA)]
+
+
+rmarkdown::paged_table(GoodxBA)
+
+```
+
+After this we still had around 255 players, which is a lot of players to thoroughly analyze. Here I decided to take out all players who made the playoffs in 2021 as teams in the playoff hunt are less likely to either trade their players or let their contributors walk in free agency.
+
+```{r}
+as.data.table(GoodxBA)
+
+class(GoodxBA)
+
+GoodxBA$Playoff <- 0
+
+Playoff <- c('LAN', 'SFN', 'ATL', 'BOS', 'HOU', 'MIL', "NYA", 'SLN', 'TBA')
+
+GoodxBA$Playoff <- ifelse(GoodxBA$teamID %in% Playoff, 1, 0)
+
+EligiblePlayers <- GoodxBA[GoodxBA$Playoff == 0]
+
+rmarkdown::paged_table(EligiblePlayers)
+
+```
+
+I then created EligiblePlayers with the players who met all the criteria. This is where my initial analysis and filtering ended. I took the Eligible players data and moved it to Tableau to be visualized, but I continued a deeper analysis in R.
+
+# Deeper Analysis
+
+From here we have crafted a list of 170 players that meet our criteria, I personally want to narrow it down a bit more. I want to limit strike outs for these players, if a player struck out in less than 20% of their at bats I want to assign them to a new data set called Ball in play Demons (BIPDemons).
+
+```{r}
+EligiblePlayers[, SOP := EligiblePlayers$SO/EligiblePlayers$AB]
+
+BIPDemons <- EligiblePlayers[EligiblePlayers$SOP < .20]
+
+rmarkdown::paged_table(BIPDemons)
+
+```
+
+
+Maybe that is not what you are in the market for, maybe you want to get players that will send balls to the moon and do not care about strike outs, here I want to find players who got a high amount of XBHs. I set the number to 45 XBHs in a season. 
+
+```{r}
+Sluggers <- EligiblePlayers[, XBH := EligiblePlayers$`2B` + EligiblePlayers$`3B` + EligiblePlayers$HR]
+
+
+Sluggers <- Sluggers[Sluggers$XBH > 45]
+
+rmarkdown::paged_table(Sluggers)
+
+```
+
+Now there are 2 different groups of hitters who specialize in different things from the Eligible players, my next question is if there is any players that overlap and if so how many.
+
+```{r}
+Overlap <- inner_join(Sluggers, BIPDemons, by = c("playerID"))
+View(Overlap)
+```
+
+Looking at this I see a good few stars of the game or rising talent, they are not who we are targeting. The names that intrigue me the most are Jake Cronenworth, Jesse Winker, Ty France, and Andrew Benintendi. All these guys are solid players that are in their primes, but not superstars of the game. These are the four we could target based off our Teams needs, but how much more impressive where they than a normal player. I wanted to check how many Total Bases these guys had over the average. 
+
+```{r}
+
+Targets <- Overlap[c(1:3, 8)]
+
+Targets$TBAboveAv <- NA
+
+  for(i in 1:nrow(Targets)) {
+
+  Targets$TBAboveAv[i] <- Targets$TotalBases.x[i] - mean(EligiblePlayers$TotalBases)
+
+  }
+
+rmarkdown::paged_table(Targets)
+
+```
+
+
+
+# Optimal Lineups
+
+Here I wanted to create an optimal lineup of players with certain conditions. I had to use 2016 data for this as it was the soonest available for what I could find, it will be easy to plus in the current data if I am given it. 
+
+
+```{r}
+library(readr)
+Salaries <- read_csv("baseballdatabank-2022.2/Salaries.csv")
+View(Salaries)
+
+
+library(readr)
+Batting <- read_csv("baseballdatabank-2022.2/Batting.csv")
+View(Batting)
+
+library(readr)
+Fielding <- read_csv("baseballdatabank-2022.2/Fielding.csv")
+View(Fielding)
+
+Salaries <- as.data.table(Salaries)
+Batting <- as.data.table(Batting)
+Fielding <- as.data.table(Fielding)
+
+Salaries <- Salaries[yearID == 2016]
+Batting <- Batting[yearID == 2016]
+Fielding <- Fielding[yearID == 2016]
+
+IdealLineup <- Salaries[Batting, on = "playerID == playerID"]
+
+IdealLineup <- IdealLineup[Fielding, on = "playerID == playerID"]
+
+View(IdealLineup)
+
+IdealLineup <- IdealLineup[IdealLineup$POS != "P"]
+
+IdealLineup <- IdealLineup[IdealLineup$AB > 50]
+
+IdealLineup <- IdealLineup[IdealLineup$G > 30]
+
+IdealLineup <- IdealLineup[yearID == 2016]
+
+
+cvec <- c(rep(1,8), rep(0,703))
+
+bvec <- c(1, 1, 1, 1, 1, 3, 130000000, 950, 450, 8 )
+
+con_dir <- c("==", "==","==","==","==","==", "<=", ">=", ">=", "==")
+
+library(ROI)
+library(ROI.plugin.glpk)
+library(ompr)
+library(ompr.roi)
+
+A_mat <- rbind(IdealLineup$POS == "C",
+               IdealLineup$POS == "1B",
+               IdealLineup$POS == "2B",
+               IdealLineup$POS == "SS",
+               IdealLineup$POS == "3B",
+               IdealLineup$POS == "OF",
+               sum(IdealLineup$salary),
+               sum(IdealLineup$H),
+               sum(IdealLineup$RBI),
+               c(rep(1,711)))
+
+
+A_mat <- rbind(IdealLineup$POS == "C",
+               IdealLineup$POS == "1B",
+               IdealLineup$POS == "2B",
+               IdealLineup$POS == "SS",
+               IdealLineup$POS == "3B",
+               IdealLineup$POS == "OF",
+               IdealLineup$salary,
+               IdealLineup$H,
+               IdealLineup$RBI,
+               c(rep(1,711)))
+
+
+total_constraint <- L_constraint(L = A_mat,  dir = con_dir, rhs = bvec)
+
+model_create <- OP(objective = cvec, constraints = total_constraint, types = rep("B", length(cvec)), maximum = TRUE)
+
+model_solve <- ROI_solve(model_create)
+
+model_solve$solution
+
+IdealLineup$PredictedPlayers <- model_solve$solution
+
+Players <- IdealLineup[IdealLineup$PredictedPlayers != 0, ]
+
+rmarkdown::paged_table(Players)
+
+```
+
+
+
